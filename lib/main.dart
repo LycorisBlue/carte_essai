@@ -1,11 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   runApp(MyApp());
@@ -31,86 +29,99 @@ class GeolocatorApp extends StatefulWidget {
 }
 
 class _GeolocatorAppState extends State<GeolocatorApp> {
-      Position? _currentLocation;
-    late bool servicePermission = false;
-    late LocationPermission permission;
+  Position? _currentLocation;
+  List<LatLng> routpoints = [LatLng(52.05884, -1.345583)];
 
-    String _currentAdress = "";
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+    Timer.periodic(Duration(seconds: 2), (Timer timer) {
+      _getCurrentLocation();
+    }); 
+  }
 
-    Future<Position> _getCurrentLocation() async {
-      servicePermission = await Geolocator.isLocationServiceEnabled();
-      if (!servicePermission) {
-        print('je suis lostvayne');
-      }
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      return await Geolocator.getCurrentPosition();
+  Future<void> _getCurrentLocation() async {
+    bool servicePermission = await Geolocator.isLocationServiceEnabled();
+    if (!servicePermission) {
+      print('Service de localisation désactivé');
+      return;
+    }
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
     }
 
-    _getAdressFromCoordinates() async {
-      try {
-        List<Placemark> placemarks = await placemarkFromCoordinates(
-            _currentLocation!.latitude, _currentLocation!.longitude);
-        Placemark place = placemarks[0];
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
 
-        setState(() {
-          _currentAdress = "${place.country}, ${place.locality}";
-        });
-      } catch (e) {
-        print(e);
-      }
-    }
-
-
+    setState(() {
+      _currentLocation = position;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
-        title: Text('Lycoris Blue'),
+        title: Text('OpenStreetMap'),
         centerTitle: true,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              'Lacation coordinate',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      body: _currentLocation != null
+          ? SafeArea(
+              child: SizedBox(
+                height: 500,
+                width: 400,
+                child: FlutterMap(
+                  options: MapOptions(
+                    center: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+                    zoom: 18,
+                  ),
+                  nonRotatedChildren: [
+                    AttributionWidget.defaultWidget(
+                      source: 'OpenStreetMap contributors',
+                      onSourceTapped: null,
+                    ),
+                  ],
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      subdomains: ['a', 'b', 'c'],
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
+                          width: 40,
+                          height: 40,
+                          builder: (ctx) => Container(
+                            child: Icon(
+                              Icons.location_on,
+                              color: Colors.blue,
+                              size: 40.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    PolylineLayer(
+                      polylineCulling: false,
+                      polylines: [
+                        Polyline(
+                          points: routpoints,
+                          color: Colors.blue,
+                          strokeWidth: 9,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Center(
+              child: CircularProgressIndicator(),
             ),
-            SizedBox(
-              height: 10,
-            ),
-            Text(
-                'Latitude = ${_currentLocation?.latitude}  Longitude = ${_currentLocation?.longitude}'),
-            SizedBox(
-              height: 30,
-            ),
-            Text(
-              'Lacation Address',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(
-              height: 10,
-            ),
-            Text('${_currentAdress}'),
-            SizedBox(
-              height: 50,
-            ),
-            ElevatedButton(
-                onPressed: () async {
-                  _currentLocation = await _getCurrentLocation();
-                  await _getAdressFromCoordinates();
-                },
-                child: Text('my position'))
-          ],
-        ),
-      ),
     );
   }
 }
